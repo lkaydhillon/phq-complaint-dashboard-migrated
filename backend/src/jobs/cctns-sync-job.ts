@@ -1,5 +1,6 @@
 import { prisma } from '../config/database.js';
 import { fetchCctnsComplaints } from '../services/cctns.js';
+import { clearCache } from '../utils/cache.js';
 import {
   CctnsComplaintRow,
   normalizeComplaintRow,
@@ -209,6 +210,7 @@ export const runCctnsFullRollingSync = async (): Promise<void> => {
   }
 
   console.log(`[SYNC] Full rolling sync complete — ${chunkIndex} chunks processed`);
+  clearCache(); // Bust dashboard cache so next load reflects newly synced data
 };
 
 
