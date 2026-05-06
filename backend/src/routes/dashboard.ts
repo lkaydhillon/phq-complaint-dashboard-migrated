@@ -57,15 +57,15 @@ export const dashboardRoutes = async (fastify: FastifyInstance) => {
     // SQL AVG instead of findMany+loop — transfers 1 row instead of 80,000
     const avgResult = await prisma.$queryRaw<[{ avg_days: number }]>`
       SELECT COALESCE(
-        AVG(GREATEST(0, EXTRACT(EPOCH FROM (disposal_date - compl_reg_dt)) / 86400)),
+        AVG(GREATEST(0, EXTRACT(EPOCH FROM ("disposalDate" - "complRegDt")) / 86400)),
         0
       ) AS avg_days
       FROM "Complaint"
-      WHERE status_group = 'disposed'
-        AND is_disposed_missing_date = false
-        AND compl_reg_dt IS NOT NULL
-        AND disposal_date IS NOT NULL
-        AND disposal_date >= compl_reg_dt
+      WHERE "statusGroup" = 'disposed'
+        AND "isDisposedMissingDate" = false
+        AND "complRegDt" IS NOT NULL
+        AND "disposalDate" IS NOT NULL
+        AND "disposalDate" >= "complRegDt"
     `;
     const avgDisposalTime = Math.round(Number(avgResult[0]?.avg_days ?? 0));
 
@@ -214,23 +214,23 @@ export const dashboardRoutes = async (fastify: FastifyInstance) => {
     const data = await cached(`ageing-matrix:${q}`, 5 * 60 * 1000, async () => {
       // SQL GROUP BY: transfers ~30 rows (one per district) instead of 50,000+ complaint rows
       const rows = await prisma.$queryRaw<Array<{
-        district_master_id: bigint | null;
+        districtMasterId: bigint | null;
         u7: bigint; u15: bigint; u30: bigint; o30: bigint; o60: bigint;
       }>>`
         SELECT
-          district_master_id,
-          COUNT(*) FILTER (WHERE NOW() - compl_reg_dt < INTERVAL '7 days')   AS u7,
-          COUNT(*) FILTER (WHERE NOW() - compl_reg_dt >= INTERVAL '7 days'  AND NOW() - compl_reg_dt < INTERVAL '15 days') AS u15,
-          COUNT(*) FILTER (WHERE NOW() - compl_reg_dt >= INTERVAL '15 days' AND NOW() - compl_reg_dt < INTERVAL '30 days') AS u30,
-          COUNT(*) FILTER (WHERE NOW() - compl_reg_dt >= INTERVAL '30 days' AND NOW() - compl_reg_dt < INTERVAL '60 days') AS o30,
-          COUNT(*) FILTER (WHERE NOW() - compl_reg_dt >= INTERVAL '60 days')                                               AS o60
+          "districtMasterId",
+          COUNT(*) FILTER (WHERE NOW() - "complRegDt" < INTERVAL '7 days')   AS u7,
+          COUNT(*) FILTER (WHERE NOW() - "complRegDt" >= INTERVAL '7 days'  AND NOW() - "complRegDt" < INTERVAL '15 days') AS u15,
+          COUNT(*) FILTER (WHERE NOW() - "complRegDt" >= INTERVAL '15 days' AND NOW() - "complRegDt" < INTERVAL '30 days') AS u30,
+          COUNT(*) FILTER (WHERE NOW() - "complRegDt" >= INTERVAL '30 days' AND NOW() - "complRegDt" < INTERVAL '60 days') AS o30,
+          COUNT(*) FILTER (WHERE NOW() - "complRegDt" >= INTERVAL '60 days')                                               AS o60
         FROM "Complaint"
-        WHERE status_group = 'pending' AND compl_reg_dt IS NOT NULL
-        GROUP BY district_master_id
+        WHERE "statusGroup" = 'pending' AND "complRegDt" IS NOT NULL
+        GROUP BY "districtMasterId"
       `;
       const districtMapById = await getDistrictNameByIdMap();
       return rows.map(r => ({
-        district: r.district_master_id ? (districtMapById.get(r.district_master_id.toString()) || UNMAPPED) : UNMAPPED,
+        district: r.districtMasterId ? (districtMapById.get(r.districtMasterId.toString()) || UNMAPPED) : UNMAPPED,
         u7:  Number(r.u7),
         u15: Number(r.u15),
         u30: Number(r.u30),
@@ -249,23 +249,23 @@ export const dashboardRoutes = async (fastify: FastifyInstance) => {
       // SQL GROUP BY: transfers ~30 rows instead of 80,000+ disposal rows
       const [rows, missingDates] = await Promise.all([
         prisma.$queryRaw<Array<{
-          district_master_id: bigint | null;
+          districtMasterId: bigint | null;
           u7: bigint; u15: bigint; u30: bigint; o30: bigint; o60: bigint;
         }>>`
           SELECT
-            district_master_id,
-            COUNT(*) FILTER (WHERE disposal_date - compl_reg_dt < INTERVAL '7 days')   AS u7,
-            COUNT(*) FILTER (WHERE disposal_date - compl_reg_dt >= INTERVAL '7 days'  AND disposal_date - compl_reg_dt < INTERVAL '15 days') AS u15,
-            COUNT(*) FILTER (WHERE disposal_date - compl_reg_dt >= INTERVAL '15 days' AND disposal_date - compl_reg_dt < INTERVAL '30 days') AS u30,
-            COUNT(*) FILTER (WHERE disposal_date - compl_reg_dt >= INTERVAL '30 days' AND disposal_date - compl_reg_dt < INTERVAL '60 days') AS o30,
-            COUNT(*) FILTER (WHERE disposal_date - compl_reg_dt >= INTERVAL '60 days')                                                       AS o60
+            "districtMasterId",
+            COUNT(*) FILTER (WHERE "disposalDate" - "complRegDt" < INTERVAL '7 days')   AS u7,
+            COUNT(*) FILTER (WHERE "disposalDate" - "complRegDt" >= INTERVAL '7 days'  AND "disposalDate" - "complRegDt" < INTERVAL '15 days') AS u15,
+            COUNT(*) FILTER (WHERE "disposalDate" - "complRegDt" >= INTERVAL '15 days' AND "disposalDate" - "complRegDt" < INTERVAL '30 days') AS u30,
+            COUNT(*) FILTER (WHERE "disposalDate" - "complRegDt" >= INTERVAL '30 days' AND "disposalDate" - "complRegDt" < INTERVAL '60 days') AS o30,
+            COUNT(*) FILTER (WHERE "disposalDate" - "complRegDt" >= INTERVAL '60 days')                                                        AS o60
           FROM "Complaint"
-          WHERE status_group = 'disposed'
-            AND is_disposed_missing_date = false
-            AND compl_reg_dt IS NOT NULL
-            AND disposal_date IS NOT NULL
-            AND disposal_date >= compl_reg_dt
-          GROUP BY district_master_id
+          WHERE "statusGroup" = 'disposed'
+            AND "isDisposedMissingDate" = false
+            AND "complRegDt" IS NOT NULL
+            AND "disposalDate" IS NOT NULL
+            AND "disposalDate" >= "complRegDt"
+          GROUP BY "districtMasterId"
         `,
         prisma.complaint.count({
           where: withAnd(buildPrismaWhereClause(request.query), { statusGroup: 'disposed', isDisposedMissingDate: true }),
@@ -274,7 +274,7 @@ export const dashboardRoutes = async (fastify: FastifyInstance) => {
       const districtMapById = await getDistrictNameByIdMap();
       return {
         rows: rows.map(r => ({
-          district: r.district_master_id ? (districtMapById.get(r.district_master_id.toString()) || UNMAPPED) : UNMAPPED,
+          district: r.districtMasterId ? (districtMapById.get(r.districtMasterId.toString()) || UNMAPPED) : UNMAPPED,
           u7:  Number(r.u7),
           u15: Number(r.u15),
           u30: Number(r.u30),
